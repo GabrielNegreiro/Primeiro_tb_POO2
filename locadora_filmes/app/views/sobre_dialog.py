@@ -12,8 +12,8 @@ class SobreDialog(QDialog):
             '<p>Trabalho 1 - Programação Orientada a Objetos II</p>'
             '<p>Universidade Federal do Piauí (UFPI)</p>'
             '<p><b>Integrantes:</b><br>'
-            'Nilson Bruno<br>'
-            'Gabriel Negreiro</p>'
+            'Nilson Bruno dos Santos Lima<br>'
+            'Gabriel Santana Paz Landim Negreiros</p>'
         )
 
         label_info = QLabel(texto)
