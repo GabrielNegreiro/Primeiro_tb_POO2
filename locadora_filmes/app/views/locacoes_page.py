@@ -5,9 +5,7 @@ from PySide6.QtWidgets import (
 
 from app.views.locacao_dialog import LocacaoDialog
 
-
 class LocacoesPage(QWidget):
-    """Página que lista as locações e permite registrar/devolver."""
 
     def __init__(self, locacao_service, filme_service, parent=None):
         super().__init__(parent)
@@ -18,11 +16,11 @@ class LocacoesPage(QWidget):
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(5)
         self.tabela.setHorizontalHeaderLabels(
-            ["Filme", "Cliente", "Locação", "Prevista", "Status"]
+            ['Filme', 'Cliente', 'Locação', 'Prevista', 'Status']
         )
 
-        botao_nova = QPushButton("Registrar Nova Locação")
-        botao_devolver = QPushButton("Devolver Selecionada")
+        botao_nova = QPushButton('Registrar Nova Locação')
+        botao_devolver = QPushButton('Devolver Selecionada')
         botao_nova.clicked.connect(self.abrir_nova_locacao)
         botao_devolver.clicked.connect(self.devolver_selecionada)
 
@@ -52,8 +50,8 @@ class LocacoesPage(QWidget):
         filmes_disponiveis = self.filme_service.listar_disponiveis()
 
         if not filmes_disponiveis:
-            QMessageBox.information(self, "Sem filmes disponíveis",
-                                     "Não há filmes disponíveis para locação no momento.")
+            QMessageBox.information(self, 'Sem filmes disponíveis',
+                                     'Não há filmes disponíveis para locação no momento.')
             return
 
         dialog = LocacaoDialog(filmes_disponiveis, self.locacao_service, self)
@@ -63,8 +61,8 @@ class LocacoesPage(QWidget):
     def devolver_selecionada(self):
         linha = self.tabela.currentRow()
         if linha < 0:
-            QMessageBox.information(self, "Nenhuma locação selecionada",
-                                     "Selecione uma locação na tabela primeiro.")
+            QMessageBox.information(self, 'Nenhuma locação selecionada',
+                                     'Selecione uma locação na tabela primeiro.')
             return
 
         locacao = self.locacao_service.listar_todas()[linha]
@@ -72,7 +70,8 @@ class LocacoesPage(QWidget):
         try:
             self.locacao_service.devolver_locacao(locacao)
         except ValueError as erro:
-            QMessageBox.warning(self, "Erro ao devolver", str(erro))
+            QMessageBox.warning(self, 'Erro ao devolver', str(erro))
             return
 
         self.atualizar_tabela()
+        
