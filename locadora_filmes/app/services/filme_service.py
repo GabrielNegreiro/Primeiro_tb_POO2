@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Iterable, Optional
 
 from app.data.filme_repository import FilmeRepository
 from app.models.filme import Filme
 
 
 class FilmeService:
-    def __init__(self, repository=None, filmes=None):
+    def __init__(self, repository=None, filmes=None, carregar_ao_iniciar=True):
         # Mantem compatibilidade com o uso antigo: FilmeService(lista_de_filmes).
         if repository is not None and not hasattr(repository, 'carregar_filmes'):
             if filmes is not None:
@@ -17,11 +17,17 @@ class FilmeService:
 
         if filmes is not None:
             self.filmes = list(filmes)
+        elif carregar_ao_iniciar:
+            carregados = self.repository.carregar_filmes()
+            self.filmes = carregados if carregados else self._filmes_iniciais()
         else:
-            self.filmes = self.repository.carregar_filmes()
-            if not self.filmes:
-                self.filmes = self._filmes_iniciais()
+            self.filmes = []
 
+        self._proximo_id = self._calcular_proximo_id()
+
+    def aplicar_filmes_carregados(self, filmes: Iterable[Filme]) -> None:
+        filmes = list(filmes)
+        self.filmes = filmes if filmes else self._filmes_iniciais()
         self._proximo_id = self._calcular_proximo_id()
 
     def listar_filmes(self):

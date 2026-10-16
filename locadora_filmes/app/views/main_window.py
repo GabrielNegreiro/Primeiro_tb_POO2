@@ -10,12 +10,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.data.filme_repository import FilmeRepository
 from app.services.filme_service import FilmeService
 from app.services.locacao_service import LocacaoService
 from app.views.dashboard_page import DashboardPage
 from app.views.filmes_page import FilmesPage
 from app.views.locacoes_page import LocacoesPage
 from app.views.sobre_dialog import SobreDialog
+from app.workers.filme_loader_thread import FilmeLoaderThread
 
 
 class MainWindow(QMainWindow):
@@ -24,7 +26,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('Locadora de Filmes')
         self.resize(900, 600)
 
-        self.filme_service = FilmeService()
+        self.filme_repository = FilmeRepository()
+        self.filme_service = FilmeService(
+            self.filme_repository,
+            carregar_ao_iniciar=False,
+        )
         self.locacao_service = LocacaoService()
 
         self.dashboard_page = DashboardPage(self.locacao_service, self.filme_service)
@@ -54,6 +60,7 @@ class MainWindow(QMainWindow):
         self._criar_menu()
         self._criar_toolbar()
         self._conectar_integracao()
+        self._iniciar_carregamento_filmes()
 
     def _criar_acoes(self):
         self.acao_inicio = QAction('Inicio', self)
@@ -108,6 +115,34 @@ class MainWindow(QMainWindow):
         self.filmes_page.filme_excluido.connect(self.atualizar_tudo)
         self.locacoes_page.locacoes_alteradas.connect(self.atualizar_tudo)
 
+    def _iniciar_carregamento_filmes(self):
+        self.statusBar().showMessage('Carregando acervo...')
+        self.filme_loader_thread = FilmeLoaderThread(
+            self.filme_repository,
+            self,
+        )
+        self.filme_loader_thread.carregado.connect(
+            self._on_filmes_carregados
+        )
+        self.filme_loader_thread.erro.connect(
+            self._on_erro_carregamento_filmes
+        )
+        self.filme_loader_thread.start()
+
+    def _on_filmes_carregados(self, filmes):
+        self.filme_service.aplicar_filmes_carregados(filmes)
+        self.filmes_page.carregar_filmes()
+        self.dashboard_page.atualizar_resumo()
+        self.statusBar().showMessage('Acervo carregado.', 3000)
+
+    def _on_erro_carregamento_filmes(self, mensagem):
+        self.statusBar().showMessage('Falha ao carregar o acervo.')
+        QMessageBox.warning(
+            self,
+            'Erro ao carregar acervo',
+            f'Nao foi possivel carregar o acervo de filmes.\n\n{mensagem}',
+        )
+
     def ir_inicio(self):
         self.navegacao.setCurrentRow(0)
 
@@ -143,6 +178,16 @@ class MainWindow(QMainWindow):
             'Deseja realmente sair?',
         )
         if resposta == QMessageBox.StandardButton.Yes:
+            if self.filme_loader_thread.isRunning():
+                self.statusBar().showMessage('Aguardando o carregamento terminar...')
+                if not self.filme_loader_thread.wait(3000):
+                    QMessageBox.information(
+                        self,
+                        'Carregamento em andamento',
+                        'Aguarde o carregamento do acervo terminar para sair.',
+                    )
+                    event.ignore()
+                    return
             event.accept()
         else:
             event.ignore()

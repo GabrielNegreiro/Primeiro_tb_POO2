@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from app.data.filme_repository import FilmeRepository
 from app.models.filme import Filme
@@ -108,6 +109,38 @@ class FilmeServiceTest(unittest.TestCase):
         reiniciado = FilmeService(repository_vazio)
         self.assertEqual(len(reiniciado.listar_filmes()), 5)
         self.assertEqual(len({filme.id for filme in reiniciado.listar_filmes()}), 5)
+
+    def test_carregamento_automatico_desativado_nao_le_repository(self):
+        repository = Mock(spec=FilmeRepository)
+
+        service = FilmeService(repository, carregar_ao_iniciar=False)
+
+        repository.carregar_filmes.assert_not_called()
+        self.assertEqual(service.listar_filmes(), [])
+
+    def test_aplicar_filmes_carregados_atualiza_acervo_e_proximo_id(self):
+        repository = Mock(spec=FilmeRepository)
+        service = FilmeService(repository, carregar_ao_iniciar=False)
+        carregados = [
+            Filme(2, 'Filme 2', 'Drama', 2020, 90, True),
+            Filme(8, 'Filme 8', 'Acao', 2024, 120, True),
+        ]
+
+        service.aplicar_filmes_carregados(carregados)
+        novo = service.adicionar_filme('Filme 9', 'Comedia', 2026, 100)
+
+        self.assertIs(service.buscar_por_id(8), carregados[1])
+        self.assertEqual(novo.id, 9)
+        repository.salvar_filmes.assert_called_once()
+
+    def test_aplicar_lista_vazia_usa_fallback_sem_persistir(self):
+        repository = Mock(spec=FilmeRepository)
+        service = FilmeService(repository, carregar_ao_iniciar=False)
+
+        service.aplicar_filmes_carregados([])
+
+        self.assertEqual(len(service.listar_filmes()), 4)
+        repository.salvar_filmes.assert_not_called()
 
 
 if __name__ == '__main__':
