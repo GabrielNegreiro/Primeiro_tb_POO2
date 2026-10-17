@@ -4,14 +4,13 @@ from app.models.locacao import Locacao
 
 
 class LocacaoService:
-    """Regras de negócio para locações de filmes."""
 
     def __init__(self, repository=None):
         self.repository = repository
         self.locacoes = []
 
     def carregar(self, buscar_filme):
-        """Carrega as locações salvas. Chamar depois que os filmes já foram carregados."""
+        # Carrega as locacoes salvas. Chamar depois que os filmes ja foram carregados.
         if self.repository is None:
             return
 
@@ -20,7 +19,7 @@ class LocacaoService:
 
     def criar_locacao(self, filme, cliente_nome, dias_previstos=7):
         if not filme.disponivel:
-            raise ValueError("Filme indisponível para locação.")
+            raise ValueError('Filme indisponível para locação.')
 
         prevista = date.today() + timedelta(days=dias_previstos)
         locacao = Locacao(filme, cliente_nome, data_devolucao_prevista=prevista)
@@ -30,9 +29,36 @@ class LocacaoService:
         self._persistir()
         return locacao
 
+    def atualizar_locacao(self, locacao, filme, cliente_nome, dias_previstos):
+        if locacao not in self.locacoes:
+            raise ValueError('Locacao nao encontrada.')
+        if locacao.data_devolucao_real is not None:
+            raise ValueError('Nao e possivel editar uma locacao devolvida.')
+
+        cliente_nome = cliente_nome.strip()
+        if not cliente_nome:
+            raise ValueError('Informe o nome do cliente.')
+        if dias_previstos < 1:
+            raise ValueError('O prazo deve ter pelo menos um dia.')
+
+        filme_anterior = locacao.filme
+        if filme is not filme_anterior:
+            if not filme.disponivel:
+                raise ValueError('Filme indisponivel para locacao.')
+            filme_anterior.disponivel = True
+            filme.disponivel = False
+            locacao.filme = filme
+
+        locacao.cliente_nome = cliente_nome
+        locacao.data_devolucao_prevista = (
+            locacao.data_locacao + timedelta(days=dias_previstos)
+        )
+        self._persistir()
+        return locacao
+
     def devolver_locacao(self, locacao):
         if locacao.data_devolucao_real is not None:
-            raise ValueError("Locação já foi devolvida.")
+            raise ValueError('Locação já foi devolvida.')
 
         locacao.registrar_devolucao()
         locacao.filme.disponivel = True
@@ -40,7 +66,7 @@ class LocacaoService:
 
     def excluir_locacao(self, locacao):
         if locacao.data_devolucao_real is None:
-            raise ValueError("Devolva a locação antes de excluí-la.")
+            raise ValueError('Devolva a locação antes de excluí-la.')
 
         self.locacoes.remove(locacao)
         self._persistir()
@@ -49,7 +75,7 @@ class LocacaoService:
         return list(self.locacoes)
 
     def listar_ativas(self):
-        return [l for l in self.locacoes if l.status == "Em aberto"]
+        return [l for l in self.locacoes if l.status == 'Em aberto']
 
     def listar_atrasadas(self):
         return [l for l in self.locacoes if l.atrasada]
@@ -59,7 +85,7 @@ class LocacaoService:
             self.repository.salvar_locacoes(self.locacoes)
 
     def _sincronizar_disponibilidade(self):
-        # O filmes.json pode estar desatualizado: a disponibilidade vem das locações.
+        # O filmes.json pode estar desatualizado: a disponibilidade vem das locacoes.
         em_aberto = {l.filme.id for l in self.locacoes if l.data_devolucao_real is None}
         for locacao in self.locacoes:
             locacao.filme.disponivel = locacao.filme.id not in em_aberto
