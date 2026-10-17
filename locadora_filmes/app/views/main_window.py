@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.data.filme_repository import FilmeRepository
+from app.data.locacao_repository import LocacaoRepository
 from app.services.filme_service import FilmeService
 from app.services.locacao_service import LocacaoService
 from app.views.dashboard_page import DashboardPage
@@ -31,7 +32,7 @@ class MainWindow(QMainWindow):
             self.filme_repository,
             carregar_ao_iniciar=False,
         )
-        self.locacao_service = LocacaoService()
+        self.locacao_service = LocacaoService(LocacaoRepository())
 
         self.dashboard_page = DashboardPage(self.locacao_service, self.filme_service)
         self.filmes_page = FilmesPage(self.filme_service)
@@ -131,7 +132,16 @@ class MainWindow(QMainWindow):
 
     def _on_filmes_carregados(self, filmes):
         self.filme_service.aplicar_filmes_carregados(filmes)
+        try:
+            self.locacao_service.carregar(self.filme_service.buscar_por_id)
+        except ValueError as erro:
+            QMessageBox.warning(
+                self,
+                'Erro ao carregar locacoes',
+                f'Nao foi possivel carregar as locacoes.\n\n{erro}',
+            )
         self.filmes_page.carregar_filmes()
+        self.locacoes_page.atualizar_tabela()
         self.dashboard_page.atualizar_resumo()
         self.statusBar().showMessage('Acervo carregado.', 3000)
 
