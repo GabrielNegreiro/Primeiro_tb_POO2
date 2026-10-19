@@ -54,6 +54,17 @@ class FilmeService:
     def obter_filme(self, id):
         return self.buscar_por_id(id)
 
+    def definir_disponibilidade(self, filme_id: int, disponivel: bool) -> Filme:
+        filme = self.buscar_por_id(filme_id)
+        if filme is None:
+            raise ValueError('Filme nao encontrado.')
+
+        disponivel = bool(disponivel)
+        if filme.disponivel != disponivel:
+            filme.disponivel = disponivel
+            self._persistir()
+        return filme
+
     def adicionar_filme(self, titulo, genero, ano, duracao, disponivel=True):
         filme = Filme(
             id=self._proximo_id,

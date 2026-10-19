@@ -89,6 +89,10 @@ class MainWindowTest(unittest.TestCase):
             self.window.locacoes_page.filme_service,
             self.window.filme_service,
         )
+        self.assertIs(
+            self.window.locacao_service.filme_service,
+            self.window.filme_service,
+        )
         self.assertIsInstance(
             self.window.filme_loader_thread,
             FilmeLoaderThreadFake,

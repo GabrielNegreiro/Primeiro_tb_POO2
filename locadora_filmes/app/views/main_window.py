@@ -32,7 +32,10 @@ class MainWindow(QMainWindow):
             self.filme_repository,
             carregar_ao_iniciar=False,
         )
-        self.locacao_service = LocacaoService(LocacaoRepository())
+        self.locacao_service = LocacaoService(
+            LocacaoRepository(),
+            self.filme_service,
+        )
 
         self.dashboard_page = DashboardPage(self.locacao_service, self.filme_service)
         self.filmes_page = FilmesPage(self.filme_service)
@@ -195,6 +198,16 @@ class MainWindow(QMainWindow):
                         self,
                         'Carregamento em andamento',
                         'Aguarde o carregamento do acervo terminar para sair.',
+                    )
+                    event.ignore()
+                    return
+            if self.locacoes_page.exportacao_em_andamento():
+                self.statusBar().showMessage('Aguardando a exportacao terminar...')
+                if not self.locacoes_page.aguardar_exportacao(3000):
+                    QMessageBox.information(
+                        self,
+                        'Exportacao em andamento',
+                        'Aguarde a exportacao do relatorio terminar para sair.',
                     )
                     event.ignore()
                     return

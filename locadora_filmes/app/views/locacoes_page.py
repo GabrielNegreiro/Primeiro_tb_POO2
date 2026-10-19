@@ -178,6 +178,9 @@ class LocacoesPage(QWidget):
         self.locacoes_alteradas.emit()
 
     def exportar_relatorio(self):
+        if self.exportacao_em_andamento():
+            return
+
         caminho, _ = QFileDialog.getSaveFileName(
             self,
             'Exportar relatorio',
@@ -193,10 +196,26 @@ class LocacoesPage(QWidget):
         )
         self.thread_exportacao.concluido.connect(self.exportacao_concluida)
         self.thread_exportacao.falhou.connect(self.exportacao_falhou)
-        self.thread_exportacao.finished.connect(
-            lambda: self.botao_exportar.setEnabled(True)
-        )
+        self.thread_exportacao.finished.connect(self._finalizar_exportacao)
         self.thread_exportacao.start()
+
+    def exportacao_em_andamento(self):
+        return (
+            self.thread_exportacao is not None
+            and self.thread_exportacao.isRunning()
+        )
+
+    def aguardar_exportacao(self, timeout_ms):
+        if not self.exportacao_em_andamento():
+            return True
+        return self.thread_exportacao.wait(timeout_ms)
+
+    def _finalizar_exportacao(self):
+        thread = self.thread_exportacao
+        self.thread_exportacao = None
+        self.botao_exportar.setEnabled(True)
+        if thread is not None:
+            thread.deleteLater()
 
     def exportacao_concluida(self, caminho):
         QMessageBox.information(

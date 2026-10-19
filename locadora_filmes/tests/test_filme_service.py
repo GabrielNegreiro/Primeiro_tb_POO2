@@ -70,6 +70,26 @@ class FilmeServiceTest(unittest.TestCase):
     def test_buscar_por_id_retorna_none_para_id_inexistente(self):
         self.assertIsNone(self.service.buscar_por_id(999))
 
+    def test_definir_disponibilidade_atualiza_e_persiste(self):
+        filme = self.service.definir_disponibilidade(1, False)
+
+        persistido = next(
+            item for item in self.repository.carregar_filmes() if item.id == 1
+        )
+        self.assertFalse(filme.disponivel)
+        self.assertFalse(persistido.disponivel)
+
+    def test_definir_disponibilidade_igual_nao_regrava(self):
+        repository = Mock(spec=FilmeRepository)
+        service = FilmeService(
+            repository,
+            filmes=[Filme(1, 'Matrix', 'Ficcao', 1999, 136, True)],
+        )
+
+        service.definir_disponibilidade(1, True)
+
+        repository.salvar_filmes.assert_not_called()
+
     def test_geracao_de_id_usa_maior_id_existente(self):
         novo = self.service.adicionar_filme('Filme 6', 'Drama', 2025, 110)
 

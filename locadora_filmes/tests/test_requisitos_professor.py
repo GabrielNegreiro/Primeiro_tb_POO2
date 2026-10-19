@@ -30,6 +30,16 @@ class RequisitosProfessorTest(unittest.TestCase):
     def setUp(self):
         self.window = MainWindow()
 
+    def tearDown(self):
+        loader = getattr(self.window, 'filme_loader_thread', None)
+        if loader is not None and loader.isRunning():
+            self.assertTrue(loader.wait(5000))
+        if self.window.locacoes_page.exportacao_em_andamento():
+            self.assertTrue(self.window.locacoes_page.aguardar_exportacao(5000))
+        self.app.processEvents()
+        self.window.deleteLater()
+        self.app.processEvents()
+
     def test_componentes_principais(self):
         self.assertIsInstance(self.window.stack, QStackedWidget)
         self.assertIsInstance(self.window.menuBar(), QMenuBar)
