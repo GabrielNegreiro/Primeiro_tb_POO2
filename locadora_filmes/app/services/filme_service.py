@@ -1,9 +1,33 @@
+from typing import Iterable, Optional
+
+from app.data.filme_repository import FilmeRepository
 from app.models.filme import Filme
 
 
 class FilmeService:
-    def __init__(self, filmes=None):
-        self.filmes = list(filmes) if filmes is not None else self._filmes_iniciais()
+    def __init__(self, repository=None, filmes=None, carregar_ao_iniciar=True):
+        # Mantem compatibilidade com o uso antigo: FilmeService(lista_de_filmes).
+        if repository is not None and not hasattr(repository, 'carregar_filmes'):
+            if filmes is not None:
+                raise TypeError('Informe repository ou filmes, nao ambos.')
+            filmes = repository
+            repository = None
+
+        self.repository = repository or FilmeRepository()
+
+        if filmes is not None:
+            self.filmes = list(filmes)
+        elif carregar_ao_iniciar:
+            carregados = self.repository.carregar_filmes()
+            self.filmes = carregados if carregados else self._filmes_iniciais()
+        else:
+            self.filmes = []
+
+        self._proximo_id = self._calcular_proximo_id()
+
+    def aplicar_filmes_carregados(self, filmes: Iterable[Filme]) -> None:
+        filmes = list(filmes)
+        self.filmes = filmes if filmes else self._filmes_iniciais()
         self._proximo_id = self._calcular_proximo_id()
 
     def listar_filmes(self):
@@ -21,11 +45,14 @@ class FilmeService:
             or termo in str(filme.ano)
         ]
 
-    def obter_filme(self, id):
+    def buscar_por_id(self, filme_id: int) -> Optional[Filme]:
         for filme in self.filmes:
-            if filme.id == id:
+            if filme.id == filme_id:
                 return filme
         return None
+
+    def obter_filme(self, id):
+        return self.buscar_por_id(id)
 
     def adicionar_filme(self, titulo, genero, ano, duracao, disponivel=True):
         filme = Filme(
@@ -38,6 +65,7 @@ class FilmeService:
         )
         self.filmes.append(filme)
         self._proximo_id += 1
+        self._persistir()
         return filme
 
     def atualizar_filme(self, id, titulo, genero, ano, duracao, disponivel):
@@ -50,6 +78,7 @@ class FilmeService:
         filme.ano = int(ano)
         filme.duracao = int(duracao)
         filme.disponivel = bool(disponivel)
+        self._persistir()
         return filme
 
     def remover_filme(self, id):
@@ -60,6 +89,7 @@ class FilmeService:
             raise ValueError('Nao e possivel excluir um filme alugado.')
 
         self.filmes.remove(filme)
+        self._persistir()
         return filme
 
     def listar_disponiveis(self):
@@ -69,6 +99,9 @@ class FilmeService:
         if not self.filmes:
             return 1
         return max(filme.id for filme in self.filmes) + 1
+
+    def _persistir(self):
+        self.repository.salvar_filmes(self.filmes)
 
     def _filmes_iniciais(self):
         return [
