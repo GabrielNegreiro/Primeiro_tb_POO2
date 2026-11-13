@@ -1,0 +1,38 @@
+CHANGELOG - PARCIAL 1 - TRABALHO 3 DE POO II
+Projeto: Locadora de Filmes
+Responsavel: Nilson Bruno (modulo de locacoes)
+Branch: feature/nilson-locacoes-api
+Data: 13/11/2026
+
+ARQUIVOS CRIADOS
+- backend/app/schemas/__init__.py
+- backend/app/schemas/locacoes.py
+- backend/tests/unit/test_locacao_schemas.py
+- docs/trabalho3/modelagem_locacoes.md
+- entregas/changelog_nilson_parcial_1.txt
+
+ARQUIVOS MODIFICADOS
+- Nenhum. Nenhum arquivo do Trabalho 2 nem da infraestrutura do Gabriel foi alterado.
+
+REALIZADO
+- Branch atualizada a partir da develop/trabalho3 (fast-forward), com a
+  infraestrutura FastAPI/PostgreSQL/Docker do Gabriel.
+- Analise do modulo de locacoes do Trabalho 2: modelo, service, repository,
+  tela, dialogo e exportacao TXT.
+- Schemas Pydantic: LocacaoCreate, LocacaoUpdate, LocacaoDevolucaoRequest,
+  LocacaoResponse e FiltroLocacao, com validacoes de filme_id, nome do cliente
+  e ordem das datas.
+- 26 testes unitarios dos schemas (unittest), sem banco de dados, todos aprovados
+  com Pydantic 2.14.3.
+- Testes unitarios existentes do backend executados
+  (python -m unittest discover -s backend/tests/unit -t .): 34 testes
+  (8 da infraestrutura do Gabriel e 26 dos schemas), todos aprovados.
+- Modelagem documentada: tabela locacoes, relacionamento com filmes, contrato
+  dos endpoints, validacoes, regras de negocio e comparacao CSV x PostgreSQL.
+
+PENDENTE
+- Models SQLAlchemy, repository, service e endpoints de locacoes (Etapa 2).
+- Migracao do CSV para o PostgreSQL e conexao remota ao banco.
+- Integracao da LocacoesPage com a API.
+- Execucao dos testes existentes do desktop.
+- Teste de integracao com o PostgreSQL (depende do Docker e do banco).
