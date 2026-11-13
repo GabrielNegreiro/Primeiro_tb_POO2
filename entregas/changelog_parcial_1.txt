@@ -1,0 +1,12 @@
+TRABALHO 3 - ETAPA 1
+
+- Criada a estrutura inicial do backend FastAPI.
+- Configurada a conexao SQLAlchemy com PostgreSQL usando variaveis de ambiente.
+- Adicionados os endpoints GET /health e GET /health/db.
+- Criados Dockerfile e Docker Compose para API e PostgreSQL.
+- Configurados volume persistente, healthchecks e rede interna.
+- Adicionados testes unitarios da API e da configuracao do Compose.
+- Adicionado teste de integracao opcional para um PostgreSQL real.
+- Documentada a execucao local e a preparacao para servidor remoto.
+- Nenhum CRUD de filmes ou locacoes foi implementado nesta etapa.
+
