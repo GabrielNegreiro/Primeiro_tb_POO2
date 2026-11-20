@@ -41,6 +41,17 @@ class DockerComposeTest(unittest.TestCase):
         self.assertIn('backend', database['networks'])
         self.assertEqual(api['environment']['DATABASE_HOST'], 'db')
 
+    def test_perfil_de_integracao_usa_banco_isolado(self):
+        api_test = self.compose['services']['api_test']
+        database_test = self.compose['services']['db_test']
+
+        self.assertIn('test', api_test['profiles'])
+        self.assertIn('test', database_test['profiles'])
+        self.assertNotIn('ports', database_test)
+        self.assertIn('/var/lib/postgresql/data', database_test['tmpfs'])
+        self.assertEqual(api_test['environment']['DATABASE_HOST'], 'db_test')
+        self.assertEqual(api_test['environment']['POSTGRES_DB'], 'locadora_test')
+
 
 if __name__ == '__main__':
     unittest.main()
