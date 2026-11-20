@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from .config import ConfigurationError
 from .database import check_database_connection
+from .routers.filmes import router as filmes_router
 
 
 app = FastAPI(
@@ -10,6 +12,16 @@ app = FastAPI(
     description='Backend HTTP da Locadora de Filmes.',
     version='0.1.0',
 )
+app.include_router(filmes_router)
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_exception_handler(_request: Request, _error: SQLAlchemyError):
+    """Converte falhas inesperadas de banco em resposta sem dados sensiveis."""
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={'detail': 'Falha ao acessar o banco de dados.'},
+    )
 
 
 @app.get('/health', tags=['health'])
