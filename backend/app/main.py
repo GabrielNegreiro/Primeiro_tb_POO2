@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from .config import ConfigurationError
 from .database import check_database_connection
 from .routers.filmes import router as filmes_router
+from .routers.locacoes import router as locacoes_router
 
 
 app = FastAPI(
@@ -13,6 +14,7 @@ app = FastAPI(
     version='0.1.0',
 )
 app.include_router(filmes_router)
+app.include_router(locacoes_router)
 
 
 @app.exception_handler(SQLAlchemyError)
