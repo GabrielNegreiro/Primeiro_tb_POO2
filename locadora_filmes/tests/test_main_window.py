@@ -1,13 +1,12 @@
 import os
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication, QMenuBar, QStackedWidget, QToolBar
 
-from app.data.filme_repository import FilmeRepository
 from app.models.filme import Filme
 from app.views.dashboard_page import DashboardPage
 from app.views.filmes_page import FilmesPage
@@ -15,23 +14,69 @@ from app.views.locacoes_page import LocacoesPage
 from app.views.main_window import MainWindow
 
 
+class FilmeApiServiceFake:
+    def __init__(self, filmes):
+        self.fonte = list(filmes)
+        self.filmes = []
+        self.carregamentos = 0
+        self.fechado = False
+
+    def carregar_filmes(self):
+        self.carregamentos += 1
+        self.aplicar_filmes_carregados(self.fonte)
+        return self.listar_filmes()
+
+    def aplicar_filmes_carregados(self, filmes):
+        self.filmes = list(filmes)
+
+    def listar_filmes(self):
+        return list(self.filmes)
+
+    def buscar_filmes(self, texto):
+        termo = texto.strip().lower()
+        return [
+            filme
+            for filme in self.filmes
+            if not termo
+            or termo in filme.titulo.lower()
+            or termo in filme.genero.lower()
+            or termo in str(filme.ano)
+        ]
+
+    def obter_filme(self, filme_id):
+        return next(
+            (filme for filme in self.filmes if filme.id == filme_id),
+            None,
+        )
+
+    def listar_disponiveis(self):
+        return [filme for filme in self.filmes if filme.disponivel]
+
+    def fechar(self):
+        self.fechado = True
+
+
 class FilmeLoaderThreadFake(QObject):
     carregado = Signal(object)
     erro = Signal(str)
+    finished = Signal()
+    instancias = []
 
-    def __init__(self, repository, parent=None):
+    def __init__(self, fonte, parent=None):
         super().__init__(parent)
-        self.repository = repository
+        self.fonte = fonte
         self.iniciada = False
+        self.__class__.instancias.append(self)
 
     def start(self):
         self.iniciada = True
         try:
-            filmes = self.repository.carregar_filmes()
+            filmes = self.fonte.carregar_filmes()
         except Exception as excecao:
             self.erro.emit(str(excecao))
-            return
-        self.carregado.emit(filmes)
+        else:
+            self.carregado.emit(filmes)
+        self.finished.emit()
 
     def isRunning(self):
         return False
@@ -46,27 +91,25 @@ class MainWindowTest(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        FilmeLoaderThreadFake.instancias.clear()
         self.filmes_persistidos = [
             Filme(3, 'Interestelar', 'Ficcao', 2014, 169, True),
             Filme(7, 'Cidade de Deus', 'Drama', 2002, 130, False),
         ]
-        self.repository = Mock(spec=FilmeRepository)
-        self.repository.carregar_filmes.return_value = self.filmes_persistidos
-
-        self.repository_patch = patch(
-            'app.views.main_window.FilmeRepository',
-            return_value=self.repository,
-        )
+        self.service = FilmeApiServiceFake(self.filmes_persistidos)
         self.loader_patch = patch(
             'app.views.main_window.FilmeLoaderThread',
             FilmeLoaderThreadFake,
         )
-        self.repository_class = self.repository_patch.start()
         self.loader_patch.start()
-        self.addCleanup(self.repository_patch.stop)
         self.addCleanup(self.loader_patch.stop)
 
-        self.window = MainWindow()
+        self.window = MainWindow(filme_service=self.service)
+        self.loader = FilmeLoaderThreadFake.instancias[-1]
+
+    def tearDown(self):
+        self.window.deleteLater()
+        self.app.processEvents()
 
     def test_paginas_e_stack(self):
         self.assertIsInstance(self.window.stack, QStackedWidget)
@@ -74,36 +117,22 @@ class MainWindowTest(unittest.TestCase):
         self.assertIsInstance(self.window.filmes_page, FilmesPage)
         self.assertIsInstance(self.window.locacoes_page, LocacoesPage)
 
-    def test_cria_repository_service_unico_e_loader(self):
-        self.repository_class.assert_called_once_with()
-        self.assertIs(self.window.filme_service.repository, self.repository)
-        self.assertIs(
-            self.window.filmes_page.filme_service,
-            self.window.filme_service,
-        )
-        self.assertIs(
-            self.window.dashboard_page.filme_service,
-            self.window.filme_service,
-        )
-        self.assertIs(
-            self.window.locacoes_page.filme_service,
-            self.window.filme_service,
-        )
-        self.assertIs(
-            self.window.locacao_service.filme_service,
-            self.window.filme_service,
-        )
-        self.assertIsInstance(
-            self.window.filme_loader_thread,
-            FilmeLoaderThreadFake,
-        )
-        self.assertTrue(self.window.filme_loader_thread.iniciada)
+    def test_service_http_unico_e_loader(self):
+        self.assertIs(self.window.filmes_page.filme_service, self.service)
+        self.assertIs(self.window.dashboard_page.filme_service, self.service)
+        self.assertIs(self.window.locacoes_page.filme_service, self.service)
+        self.assertTrue(self.loader.iniciada)
+        self.assertEqual(self.service.carregamentos, 1)
 
-    def test_repository_e_carregado_uma_unica_vez(self):
-        self.repository.carregar_filmes.assert_called_once_with()
+    def test_carregamento_inicial_atualiza_tela_e_dashboard(self):
         self.assertEqual(
-            self.window.filme_service.listar_filmes(),
+            self.service.listar_filmes(),
             self.filmes_persistidos,
+        )
+        self.assertEqual(self.window.filmes_page.tabela.rowCount(), 2)
+        self.assertEqual(
+            self.window.dashboard_page.label_disponiveis.text(),
+            '1',
         )
 
     def test_signal_de_sucesso_atualiza_service_e_paginas(self):
@@ -111,48 +140,54 @@ class MainWindowTest(unittest.TestCase):
             Filme(10, 'Novo Acervo', 'Drama', 2026, 100, True),
         ]
 
-        self.window.filme_loader_thread.carregado.emit(novos_filmes)
+        self.loader.carregado.emit(novos_filmes)
 
-        self.assertEqual(
-            self.window.filme_service.listar_filmes(),
-            novos_filmes,
-        )
+        self.assertEqual(self.service.listar_filmes(), novos_filmes)
         self.assertEqual(self.window.filmes_page.tabela.rowCount(), 1)
         self.assertEqual(
             self.window.filmes_page.tabela.item(0, 1).text(),
             'Novo Acervo',
         )
-        self.assertEqual(self.window.dashboard_page.label_disponiveis.text(), '1')
 
-    def test_signal_de_erro_exibe_aviso(self):
+    def test_signal_de_erro_exibe_aviso_sem_fallback(self):
+        acervo_anterior = self.service.listar_filmes()
         with patch('app.views.main_window.QMessageBox.warning') as warning:
-            self.window.filme_loader_thread.erro.emit('arquivo corrompido')
+            self.loader.erro.emit('API indisponivel')
 
         warning.assert_called_once()
-        self.assertIn('arquivo corrompido', warning.call_args.args[2])
-        self.assertEqual(
-            self.window.statusBar().currentMessage(),
-            'Falha ao carregar o acervo.',
-        )
+        self.assertEqual(self.service.listar_filmes(), acervo_anterior)
+        self.assertIn('API indisponivel', warning.call_args.args[2])
 
-    def test_navegacao_funciona(self):
+    def test_navegacao_menu_toolbar_e_sobre(self):
         self.window.ir_filmes()
-        self.assertEqual(self.window.stack.currentWidget(), self.window.filmes_page)
+        self.assertEqual(
+            self.window.stack.currentWidget(),
+            self.window.filmes_page,
+        )
         self.window.ir_locacoes()
-        self.assertEqual(self.window.stack.currentWidget(), self.window.locacoes_page)
-
-    def test_menu_toolbar_e_sobre(self):
+        self.assertEqual(
+            self.window.stack.currentWidget(),
+            self.window.locacoes_page,
+        )
         self.assertIsInstance(self.window.menuBar(), QMenuBar)
         self.assertTrue(self.window.findChildren(QToolBar))
         with patch('app.views.main_window.SobreDialog') as sobre_dialog:
             self.window.mostrar_sobre()
             sobre_dialog.assert_called_once_with(self.window)
 
-    def test_integracao_atualizar_nao_lanca_excecao(self):
-        self.window.atualizar_tudo()
-        self.assertEqual(
-            self.window.filmes_page.tabela.rowCount(),
-            len(self.filmes_persistidos),
+    def test_atualizar_dispara_novo_carregamento_sem_bloquear(self):
+        self.assertTrue(self.window.atualizar_tudo())
+        self.assertEqual(self.service.carregamentos, 2)
+        self.assertEqual(len(FilmeLoaderThreadFake.instancias), 2)
+
+    def test_locacoes_ficam_preservadas_e_bloqueadas_no_modo_http(self):
+        self.assertTrue(self.window.locacoes_page.modo_integracao_pendente)
+        self.assertFalse(self.window.locacoes_page.botao_nova.isEnabled())
+        self.assertFalse(self.window.acao_nova_locacao.isEnabled())
+        self.assertEqual(self.window.dashboard_page.label_ativas.text(), '-')
+        self.assertIn(
+            'Nenhum dado CSV foi removido',
+            self.window.locacoes_page.label_integracao.text(),
         )
 
 

@@ -22,13 +22,39 @@ from app.views.main_window import MainWindow
 from app.widgets.search_bar import SearchBar
 
 
+class FilmeServiceFake:
+    def __init__(self):
+        self.filmes = []
+
+    def carregar_filmes(self):
+        return []
+
+    def aplicar_filmes_carregados(self, filmes):
+        self.filmes = list(filmes)
+
+    def listar_filmes(self):
+        return list(self.filmes)
+
+    def buscar_filmes(self, _texto):
+        return list(self.filmes)
+
+    def obter_filme(self, _filme_id):
+        return None
+
+    def listar_disponiveis(self):
+        return []
+
+    def fechar(self):
+        return None
+
+
 class RequisitosProfessorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
-        self.window = MainWindow()
+        self.window = MainWindow(filme_service=FilmeServiceFake())
 
     def tearDown(self):
         loader = getattr(self.window, 'filme_loader_thread', None)

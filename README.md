@@ -6,7 +6,7 @@ O projeto combina a aplicação desktop existente em PySide6 com a arquitetura:
 PySide6 -> HTTP/JSON -> FastAPI -> SQLAlchemy -> PostgreSQL em Docker
 ```
 
-O desktop ainda utiliza os repositories dos trabalhos anteriores. O backend possui infraestrutura, endpoints de saúde e CRUD completo de filmes. A substituição do JSON pelo cliente HTTP no PySide6 pertence à Etapa 3.
+O módulo de filmes do desktop utiliza a API HTTP e o PostgreSQL. Os repositories JSON/CSV foram preservados apenas como legado e para os testes dos trabalhos anteriores; eles não são fallback silencioso no modo conectado.
 
 ## Estrutura
 
@@ -42,6 +42,7 @@ O desktop ainda utiliza os repositories dos trabalhos anteriores. O backend poss
 - Alembic para migrações versionadas.
 - PostgreSQL 16 em Docker.
 - `unittest`, TestClient, SQLite e PyYAML nos testes unitários.
+- `httpx` no cliente HTTP do desktop.
 
 Foi mantido `unittest` por ser o framework já utilizado no projeto. Testes que exigem PostgreSQL ficam separados e desabilitados por padrão.
 
@@ -139,4 +140,29 @@ Em Linux, instale Docker, configure `.env`, mantenha 5432 bloqueada e publique a
 
 ## Etapa 3
 
-O repository JSON legado e toda a interface PySide6 foram preservados. Na Etapa 3, o desktop passará a consumir esta API por HTTP.
+O desktop cria `ApiClient` e `FilmeApiService` na `MainWindow`. O carregamento, cadastro, edição e exclusão são executados por QThreads; pesquisa por título, gênero e ano e filtro de disponibilidade usam o cache confirmado pela API.
+
+```powershell
+python -m pip install -r locadora_filmes/requirements.txt
+$env:LOCADORA_API_BASE_URL = "http://127.0.0.1:8000"
+python locadora_filmes/main.py
+Remove-Item Env:LOCADORA_API_BASE_URL
+```
+
+Se a variável não for definida, o endereço padrão é `http://127.0.0.1:8000`. Detalhes de classes, workers, erros e limitações estão em `docs/trabalho3/integracao_desktop_filmes.md`.
+
+Enquanto a API de locações não estiver integrada nesta branch, a tela correspondente permanece visível, mas suas operações ficam desabilitadas no modo HTTP. Assim, o CSV legado não altera silenciosamente a disponibilidade mantida pelo PostgreSQL.
+
+Testes do desktop:
+
+```powershell
+Push-Location locadora_filmes
+python -m unittest discover -s tests -p "test_*.py" -v
+
+$env:RUN_DESKTOP_API_INTEGRATION = "1"
+$env:LOCADORA_TEST_API_BASE_URL = "http://127.0.0.1:8001"
+python -m unittest discover -s tests/integration -p "test_*.py" -v
+Remove-Item Env:RUN_DESKTOP_API_INTEGRATION
+Remove-Item Env:LOCADORA_TEST_API_BASE_URL
+Pop-Location
+```

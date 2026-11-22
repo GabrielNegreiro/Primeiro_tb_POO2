@@ -59,6 +59,12 @@ class FilmeDialogTest(unittest.TestCase):
         dialog.salvar()
         self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted)
 
+    def test_disponibilidade_pode_ficar_somente_leitura_no_modo_http(self):
+        dialog = FilmeDialog(permitir_editar_disponibilidade=False)
+
+        self.assertFalse(dialog.combo_status.isEnabled())
+        self.assertIn('locacoes', dialog.combo_status.toolTip())
+
 
 if __name__ == '__main__':
     unittest.main()
