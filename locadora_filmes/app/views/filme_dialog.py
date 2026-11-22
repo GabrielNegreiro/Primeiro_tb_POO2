@@ -26,9 +26,18 @@ class FilmeDialog(QDialog):
         'Terror',
     ]
 
-    def __init__(self, filme=None, parent=None):
+    def __init__(
+        self,
+        filme=None,
+        parent=None,
+        *,
+        permitir_editar_disponibilidade=True,
+    ):
         super().__init__(parent)
         self.filme = filme
+        self.permitir_editar_disponibilidade = (
+            permitir_editar_disponibilidade
+        )
         self.setWindowTitle('Editar Filme' if filme else 'Novo Filme')
 
         self.campo_titulo = QLineEdit()
@@ -47,6 +56,11 @@ class FilmeDialog(QDialog):
         self.combo_status = QComboBox()
         self.combo_status.addItem('Disponivel', True)
         self.combo_status.addItem('Indisponivel', False)
+        if not self.permitir_editar_disponibilidade:
+            self.combo_status.setEnabled(False)
+            self.combo_status.setToolTip(
+                'A disponibilidade e controlada pelo modulo de locacoes.'
+            )
 
         formulario = QFormLayout()
         formulario.addRow('Titulo:', self.campo_titulo)

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from app.views.filme_dialog import FilmeDialog
 from app.widgets.search_bar import SearchBar
+from app.workers.filme_operation_thread import FilmeOperationThread
 
 
 class FilmesPage(QWidget):
@@ -27,6 +28,9 @@ class FilmesPage(QWidget):
         super().__init__(parent)
         self.filme_service = filme_service
         self.filmes_exibidos = []
+        self.operacao_thread = None
+        self._tipo_operacao = None
+        self._carregando = False
 
         self.label_titulo = QLabel('Filmes')
         self.label_titulo.setObjectName('tituloPagina')
@@ -41,6 +45,10 @@ class FilmesPage(QWidget):
         self.botao_novo = QPushButton('Novo Filme')
         self.botao_editar = QPushButton('Editar')
         self.botao_excluir = QPushButton('Excluir')
+
+        self.label_operacao = QLabel('')
+        self.label_operacao.setObjectName('statusOperacaoFilme')
+        self.label_operacao.setVisible(False)
 
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(6)
@@ -78,27 +86,46 @@ class FilmesPage(QWidget):
         self.carregar_filmes(filmes)
 
     def abrir_cadastro(self):
-        dialog = FilmeDialog(parent=self)
+        if self._operacao_bloqueada():
+            return
+
+        dialog = FilmeDialog(
+            parent=self,
+            permitir_editar_disponibilidade=False,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.filme_service.adicionar_filme(**dialog.dados())
-            self.carregar_filmes()
-            self.filme_cadastrado.emit()
-            QMessageBox.information(self, 'Filme cadastrado', 'Filme cadastrado com sucesso.')
+            self._executar_operacao(
+                'cadastro',
+                self.filme_service.adicionar_filme,
+                **dialog.dados(),
+            )
 
     def abrir_edicao(self):
+        if self._operacao_bloqueada():
+            return
+
         filme = self.filme_selecionado()
         if filme is None:
             QMessageBox.information(self, 'Selecione um filme', 'Selecione um filme.')
             return
 
-        dialog = FilmeDialog(filme, self)
+        dialog = FilmeDialog(
+            filme,
+            self,
+            permitir_editar_disponibilidade=False,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.filme_service.atualizar_filme(filme.id, **dialog.dados())
-            self.carregar_filmes()
-            self.filme_atualizado.emit()
-            QMessageBox.information(self, 'Filme atualizado', 'Filme atualizado com sucesso.')
+            self._executar_operacao(
+                'edicao',
+                self.filme_service.atualizar_filme,
+                filme.id,
+                **dialog.dados(),
+            )
 
     def excluir_selecionado(self):
+        if self._operacao_bloqueada():
+            return
+
         filme = self.filme_selecionado()
         if filme is None:
             QMessageBox.information(self, 'Selecione um filme', 'Selecione um filme.')
@@ -112,15 +139,11 @@ class FilmesPage(QWidget):
         if resposta != QMessageBox.StandardButton.Yes:
             return
 
-        try:
-            self.filme_service.remover_filme(filme.id)
-        except ValueError as erro:
-            QMessageBox.warning(self, 'Erro ao excluir', str(erro))
-            return
-
-        self.carregar_filmes()
-        self.filme_excluido.emit()
-        QMessageBox.information(self, 'Filme excluido', 'Filme excluido com sucesso.')
+        self._executar_operacao(
+            'exclusao',
+            self.filme_service.remover_filme,
+            filme.id,
+        )
 
     def filme_selecionado(self):
         linha = self.tabela.currentRow()
@@ -147,6 +170,7 @@ class FilmesPage(QWidget):
         layout.addWidget(self.label_titulo)
         layout.addLayout(area_busca)
         layout.addLayout(area_botoes)
+        layout.addWidget(self.label_operacao)
         layout.addWidget(self.tabela)
         self.setLayout(layout)
 
@@ -166,3 +190,123 @@ class FilmesPage(QWidget):
         if disponibilidade is None:
             return filmes
         return [filme for filme in filmes if filme.disponivel == disponibilidade]
+
+    def set_carregando(self, carregando):
+        """Atualiza controles durante um carregamento remoto do acervo."""
+        self._carregando = bool(carregando)
+        if self._carregando:
+            self.label_operacao.setText('Atualizando filmes...')
+            self.label_operacao.setVisible(True)
+        elif self.operacao_thread is None:
+            self.label_operacao.clear()
+            self.label_operacao.setVisible(False)
+        self._atualizar_controles()
+
+    def operacao_em_andamento(self):
+        """Informa se cadastro, edicao ou exclusao ainda esta executando."""
+        return (
+            self.operacao_thread is not None
+            and self.operacao_thread.isRunning()
+        )
+
+    def aguardar_operacao(self, timeout_ms):
+        """Aguarda com limite uma operacao durante o fechamento da janela."""
+        if not self.operacao_em_andamento():
+            return True
+        return self.operacao_thread.wait(timeout_ms)
+
+    def _operacao_bloqueada(self):
+        """Impede operacoes duplicadas ou iniciadas durante atualizacao."""
+        if self._carregando or self.operacao_thread is not None:
+            self.label_operacao.setText(
+                'Aguarde a operacao de filmes em andamento.'
+            )
+            self.label_operacao.setVisible(True)
+            return True
+        return False
+
+    def _executar_operacao(self, tipo, operacao, *args, **kwargs):
+        """Cria e inicia um worker unico para uma chamada do service."""
+        if self._operacao_bloqueada():
+            return False
+
+        self._tipo_operacao = tipo
+        textos = {
+            'cadastro': 'Cadastrando filme...',
+            'edicao': 'Atualizando filme...',
+            'exclusao': 'Excluindo filme...',
+        }
+        self.label_operacao.setText(textos[tipo])
+        self.label_operacao.setVisible(True)
+        self.operacao_thread = FilmeOperationThread(
+            operacao,
+            *args,
+            parent=self,
+            **kwargs,
+        )
+        self.operacao_thread.sucesso.connect(self._operacao_concluida)
+        self.operacao_thread.erro.connect(self._operacao_falhou)
+        self.operacao_thread.finished.connect(self._finalizar_operacao)
+        self._atualizar_controles()
+        self.operacao_thread.start()
+        return True
+
+    def _operacao_concluida(self, resultado):
+        """Atualiza a tela somente depois da confirmacao da API."""
+        tipo = self._tipo_operacao
+        self.carregar_filmes()
+        if tipo != 'exclusao' and resultado is not None:
+            self._selecionar_filme(resultado.id)
+
+        if tipo == 'cadastro':
+            self.filme_cadastrado.emit()
+            titulo = 'Filme cadastrado'
+            mensagem = 'Filme cadastrado com sucesso.'
+        elif tipo == 'edicao':
+            self.filme_atualizado.emit()
+            titulo = 'Filme atualizado'
+            mensagem = 'Filme atualizado com sucesso.'
+        else:
+            self.filme_excluido.emit()
+            titulo = 'Filme excluido'
+            mensagem = 'Filme excluido com sucesso.'
+        QMessageBox.information(self, titulo, mensagem)
+
+    def _operacao_falhou(self, mensagem):
+        """Apresenta falha segura sem descartar o acervo em memoria."""
+        titulos = {
+            'cadastro': 'Erro ao cadastrar',
+            'edicao': 'Erro ao atualizar',
+            'exclusao': 'Erro ao excluir',
+        }
+        QMessageBox.warning(
+            self,
+            titulos.get(self._tipo_operacao, 'Erro na operacao'),
+            mensagem,
+        )
+
+    def _finalizar_operacao(self):
+        """Restaura controles e libera o worker ja concluido."""
+        thread = self.operacao_thread
+        self.operacao_thread = None
+        self._tipo_operacao = None
+        if not self._carregando:
+            self.label_operacao.clear()
+            self.label_operacao.setVisible(False)
+        self._atualizar_controles()
+        if thread is not None:
+            thread.deleteLater()
+
+    def _atualizar_controles(self):
+        """Evita envios duplicados enquanto ha comunicacao pendente."""
+        habilitado = not self._carregando and self.operacao_thread is None
+        self.botao_novo.setEnabled(habilitado)
+        self.botao_editar.setEnabled(habilitado)
+        self.botao_excluir.setEnabled(habilitado)
+
+    def _selecionar_filme(self, filme_id):
+        """Restaura a selecao apos cadastro ou edicao bem-sucedidos."""
+        for linha, filme in enumerate(self.filmes_exibidos):
+            if filme.id == filme_id:
+                self.tabela.selectRow(linha)
+                return

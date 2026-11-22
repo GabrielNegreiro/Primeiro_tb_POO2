@@ -22,6 +22,8 @@ class DashboardPage(QWidget):
 
         self.locacao_service = locacao_service
         self.filme_service = filme_service
+        self.locacoes_integradas = True
+        self.mensagem_locacoes_pendentes = ''
 
         self.label_titulo = QLabel('Dashboard')
         self.label_titulo.setObjectName('tituloDashboard')
@@ -217,14 +219,31 @@ class DashboardPage(QWidget):
         )
 
     def atualizar_resumo(self):
+        disponiveis = self.filme_service.listar_disponiveis()
+        self.label_disponiveis.setText(str(len(disponiveis)))
+
+        if not self.locacoes_integradas:
+            self.label_ativas.setText('-')
+            self.label_atrasadas.setText('-')
+            self.tabela_recentes.setVisible(False)
+            self.label_sem_movimentacoes.setText(
+                self.mensagem_locacoes_pendentes
+            )
+            self.label_sem_movimentacoes.setVisible(True)
+            return
+
         ativas = self.locacao_service.listar_ativas()
         atrasadas = self.locacao_service.listar_atrasadas()
-        disponiveis = self.filme_service.listar_disponiveis()
 
         self.label_ativas.setText(str(len(ativas)))
         self.label_atrasadas.setText(str(len(atrasadas)))
-        self.label_disponiveis.setText(str(len(disponiveis)))
         self._atualizar_recentes()
+
+    def definir_locacoes_indisponiveis(self, mensagem):
+        """Sinaliza que os indicadores locais nao sao fonte confiavel."""
+        self.locacoes_integradas = False
+        self.mensagem_locacoes_pendentes = mensagem
+        self.atualizar_resumo()
 
     def _atualizar_recentes(self):
         locacoes = self.locacao_service.listar_todas()[-5:]

@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -25,6 +26,12 @@ class LocacoesPage(QWidget):
         self.locacao_service = locacao_service
         self.filme_service = filme_service
         self.thread_exportacao = None
+        self.modo_integracao_pendente = False
+        self.mensagem_integracao_pendente = ''
+
+        self.label_integracao = QLabel('')
+        self.label_integracao.setWordWrap(True)
+        self.label_integracao.setVisible(False)
 
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(5)
@@ -54,6 +61,7 @@ class LocacoesPage(QWidget):
         layout_botoes.addWidget(self.botao_exportar)
 
         layout_principal = QVBoxLayout()
+        layout_principal.addWidget(self.label_integracao)
         layout_principal.addWidget(self.tabela)
         layout_principal.addLayout(layout_botoes)
         self.setLayout(layout_principal)
@@ -76,6 +84,8 @@ class LocacoesPage(QWidget):
             self.tabela.setItem(linha, 4, QTableWidgetItem(locacao.status))
 
     def abrir_nova_locacao(self):
+        if self._bloquear_operacao_pendente():
+            return
         filmes_disponiveis = self.filme_service.listar_disponiveis()
 
         if not filmes_disponiveis:
@@ -92,6 +102,8 @@ class LocacoesPage(QWidget):
             self.locacoes_alteradas.emit()
 
     def abrir_edicao(self):
+        if self._bloquear_operacao_pendente():
+            return
         locacao = self.locacao_selecionada()
         if locacao is None:
             QMessageBox.information(
@@ -131,6 +143,8 @@ class LocacoesPage(QWidget):
         return self.locacao_service.listar_todas()[linha]
 
     def devolver_selecionada(self):
+        if self._bloquear_operacao_pendente():
+            return
         locacao = self.locacao_selecionada()
         if locacao is None:
             QMessageBox.information(
@@ -150,6 +164,8 @@ class LocacoesPage(QWidget):
         self.locacoes_alteradas.emit()
 
     def excluir_selecionada(self):
+        if self._bloquear_operacao_pendente():
+            return
         locacao = self.locacao_selecionada()
         if locacao is None:
             QMessageBox.information(
@@ -224,3 +240,29 @@ class LocacoesPage(QWidget):
 
     def exportacao_falhou(self, mensagem):
         QMessageBox.warning(self, 'Erro ao exportar', mensagem)
+
+    def ativar_modo_integracao_pendente(self, mensagem):
+        """Preserva a tela, mas bloqueia operacoes locais incompatíveis."""
+        self.modo_integracao_pendente = True
+        self.mensagem_integracao_pendente = mensagem
+        self.label_integracao.setText(mensagem)
+        self.label_integracao.setVisible(True)
+        for botao in (
+            self.botao_nova,
+            self.botao_editar,
+            self.botao_devolver,
+            self.botao_excluir,
+        ):
+            botao.setEnabled(False)
+            botao.setToolTip(mensagem)
+
+    def _bloquear_operacao_pendente(self):
+        """Explica por que locacoes locais nao podem alterar filmes da API."""
+        if not self.modo_integracao_pendente:
+            return False
+        QMessageBox.information(
+            self,
+            'Integracao de locacoes pendente',
+            self.mensagem_integracao_pendente,
+        )
+        return True
