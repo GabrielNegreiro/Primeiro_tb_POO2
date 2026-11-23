@@ -1,168 +1,268 @@
-# Locadora de Filmes - Trabalho 3 de POO II
+# Locadora de Filmes — Trabalho 3 de POO II
 
-O projeto combina a aplicação desktop existente em PySide6 com a arquitetura:
+Projeto acadêmico da disciplina **Programação Orientada a Objetos II**, do Bacharelado em Sistemas de Informação da **Universidade Federal do Piauí (UFPI), Campus Senador Helvídio Nunes de Barros (Picos–PI)**.
 
-```text
-PySide6 -> HTTP/JSON -> FastAPI -> SQLAlchemy -> PostgreSQL em Docker
-```
+**Autores:** Gabriel Santana Paz Landim Negreiros e Nilson Bruno dos Santos Lima.
 
-O módulo de filmes do desktop utiliza a API HTTP e o PostgreSQL. Os repositories JSON/CSV foram preservados apenas como legado e para os testes dos trabalhos anteriores; eles não são fallback silencioso no modo conectado.
+A aplicação é uma locadora de filmes com **interface desktop PySide6**, **API REST FastAPI** e persistência em **PostgreSQL 16**, executado em contêineres Docker. O Trabalho 3 continua os trabalhos anteriores, mantendo funcionalidades de filmes, locações, dashboard e exportação de relatório TXT.
 
-## Estrutura
+## Arquitetura
 
 ```text
-.
-|-- backend/
-|   |-- app/
-|   |   |-- models/filme.py
-|   |   |-- schemas/filmes.py
-|   |   |-- repositories/filmes.py
-|   |   |-- services/filmes.py
-|   |   |-- routers/filmes.py
-|   |   |-- config.py
-|   |   |-- database.py
-|   |   `-- main.py
-|   |-- alembic/versions/
-|   |-- tests/
-|   |   |-- unit/
-|   |   `-- integration/
-|   |-- Dockerfile
-|   |-- requirements.txt
-|   `-- requirements-dev.txt
-|-- docs/trabalho3/filmes_backend.md
-|-- locadora_filmes/
-|-- docker-compose.yml
-`-- .env.example
+Aplicação desktop (Python + PySide6)
+   ├── Telas: Início/Dashboard, Filmes e Locações
+   ├── Serviços: FilmeApiService e LocacaoApiService
+   ├── QThread: carregamentos, operações e exportação TXT
+   └── ApiClient (httpx)
+           │ HTTP/JSON
+           ▼
+API REST (FastAPI + Pydantic)
+   ├── Rotas /filmes e /locacoes
+   ├── Regras de negócio (services)
+   ├── Acesso a dados (repositories + SQLAlchemy)
+   └── Migrações Alembic
+           │ rede interna do Docker
+           ▼
+PostgreSQL 16 (volume persistente)
 ```
+
+O **desktop não acessa o PostgreSQL diretamente**: solicita operações à API HTTP, que valida os dados, executa as regras de negócio e utiliza SQLAlchemy para acessar o banco. As operações de rede executadas pela interface utilizam workers para evitar bloquear a janela principal.
+
+## Funcionalidades
+
+### Filmes
+
+- Cadastrar, consultar, pesquisar, editar e excluir filmes.
+- Filtrar filmes por disponibilidade.
+- Impedir exclusão quando houver impedimento de negócio, incluindo vínculo com locações.
+- Manter a disponibilidade sincronizada com as locações.
+
+### Locações
+
+- Cadastrar, consultar e editar locações em aberto.
+- Registrar devoluções e liberar filmes quando cabível.
+- Excluir somente locações já devolvidas.
+- Consultar locações **todas**, **ativas** ou **atrasadas**.
+- Impedir mais de uma locação em aberto para o mesmo filme, inclusive por restrição de unicidade parcial no PostgreSQL.
+- Exibir indicadores e movimentações recentes no dashboard.
+- Exportar relatório de locações em **TXT**.
+
+### Persistência e evolução dos trabalhos
+
+Nos trabalhos anteriores, filmes eram gravados em **JSON** e locações em **CSV**. Esses componentes permanecem no repositório para compatibilidade e testes históricos, mas **não são a fonte de dados do modo HTTP conectado**. No Trabalho 3, filmes e locações são persistidos no PostgreSQL. O arquivo TXT continua útil como formato de exportação, não como banco operacional.
 
 ## Tecnologias
 
-- FastAPI e Uvicorn para HTTP.
-- SQLAlchemy 2 e Psycopg 3 para PostgreSQL.
-- Alembic para migrações versionadas.
-- PostgreSQL 16 em Docker.
-- `unittest`, TestClient, SQLite e PyYAML nos testes unitários.
-- `httpx` no cliente HTTP do desktop.
+| Camada | Tecnologias |
+|---|---|
+| Interface | Python 3, PySide6 (Qt) |
+| Comunicação desktop–API | HTTP/JSON, httpx |
+| Backend | FastAPI, Uvicorn, Pydantic |
+| Persistência | PostgreSQL 16, SQLAlchemy 2, Psycopg 3 |
+| Migrações | Alembic |
+| Contêineres | Docker e Docker Compose |
+| Testes | unittest, mocks, TestClient, SQLite e PostgreSQL isolado |
 
-Foi mantido `unittest` por ser o framework já utilizado no projeto. Testes que exigem PostgreSQL ficam separados e desabilitados por padrão.
+## Estrutura do repositório
 
-## Configuração local
+```text
+.
+├── backend/
+│   ├── app/
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── main.py
+│   │   ├── models/          # Filme, Locacao e Base
+│   │   ├── schemas/         # Validação e contratos Pydantic
+│   │   ├── repositories/    # Persistência SQLAlchemy
+│   │   ├── services/        # Regras de negócio e transações
+│   │   └── routers/         # Endpoints de filmes e locações
+│   ├── alembic/versions/    # Migrações de filmes e locações
+│   ├── tests/
+│   │   ├── unit/
+│   │   └── integration/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── requirements-dev.txt
+├── locadora_filmes/
+│   ├── app/
+│   │   ├── data/            # Persistência legada em arquivos
+│   │   ├── models/
+│   │   ├── network/         # ApiClient
+│   │   ├── services/        # Adaptadores HTTP e exportação TXT
+│   │   ├── views/           # Janela e páginas PySide6
+│   │   ├── widgets/
+│   │   └── workers/         # QThreads de carga e operações
+│   ├── tests/
+│   │   └── integration/
+│   ├── main.py
+│   └── requirements.txt
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+└── README.md
+```
 
-Requisitos: Python 3.12 e Docker com Docker Compose.
+As antigas pastas `docs/` e `entregas/` foram removidas do repositório. Isso não afeta o código executável. O relatório acadêmico em PDF e o código-fonte devem ser organizados separadamente para a entrega da disciplina.
+
+## Executar no Windows (PowerShell)
+
+**Pré-requisitos:** Python 3.12 (recomendado), Docker Desktop com Docker Compose e Git.
+
+### 1. Clonar e configurar
 
 ```powershell
+git clone https://github.com/GabrielNegreiro/Primeiro_tb_POO2.git
+cd Primeiro_tb_POO2
 Copy-Item .env.example .env
 notepad .env
+```
+
+Preencha `POSTGRES_DB`, `POSTGRES_USER` e `POSTGRES_PASSWORD` no `.env`; **substitua a senha de exemplo por uma senha forte**. O `.env` não deve ser versionado.
+
+### 2. Iniciar a API e o PostgreSQL
+
+```powershell
 docker compose config --quiet
 docker compose up -d --build
 docker compose ps
 ```
 
-Troque `POSTGRES_PASSWORD` antes da primeira inicialização. `.env` é ignorado pelo Git.
+Espere os serviços `db` e `api` ficarem com status **healthy**. A API aplica as migrações Alembic antes de iniciar o servidor Uvicorn.
 
-## Endpoints de saúde
+Verifique:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
 Invoke-RestMethod http://127.0.0.1:8000/health/db
 ```
 
-- `/health` verifica somente o processo da API.
-- `/health/db` executa `SELECT 1` e retorna 503 com mensagem segura quando o banco falha.
-- Swagger: `http://127.0.0.1:8000/docs`.
+**Swagger / documentação interativa da API:** http://127.0.0.1:8000/docs
 
-## API de filmes
+### 3. Instalar dependências e abrir o desktop
 
-| Método | Endpoint | Resultado |
+```powershell
+python -m pip install -r locadora_filmes/requirements.txt
+$env:LOCADORA_API_BASE_URL = "http://127.0.0.1:8000"
+python locadora_filmes/main.py
+```
+
+A URL é opcional quando a API está em `http://127.0.0.1:8000`, que já é o endereço padrão. Para conectar a outra API, configure `LOCADORA_API_BASE_URL` com o endereço apropriado.
+
+### 4. Encerrar os contêineres
+
+```powershell
+docker compose down
+```
+
+**Não use `docker compose down -v`**, pois a opção `-v` remove volumes e pode apagar os dados do PostgreSQL.
+
+## Endpoints da API
+
+### Filmes
+
+| Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/filmes` | Lista filmes |
-| `GET` | `/filmes/{id}` | Consulta por ID |
-| `GET` | `/filmes?titulo=matrix` | Pesquisa parcial por título |
-| `GET` | `/filmes?disponivel=true` | Filtra disponibilidade |
-| `POST` | `/filmes` | Cadastra, HTTP 201 |
-| `PUT` | `/filmes/{id}` | Atualiza, HTTP 200 |
-| `DELETE` | `/filmes/{id}` | Exclui, HTTP 204 |
+| GET | `/filmes` | Lista filmes; filtros opcionais `titulo` e `disponivel` |
+| GET | `/filmes/{filme_id}` | Consulta um filme |
+| POST | `/filmes` | Cadastra um filme |
+| PUT | `/filmes/{filme_id}` | Atualiza um filme |
+| DELETE | `/filmes/{filme_id}` | Exclui um filme, se permitido |
 
-Recursos ausentes retornam 404. Filme alugado ou referenciado por locações retorna 409 na exclusão. Dados inválidos retornam 422. Falhas inesperadas de banco retornam 503 sem detalhes sensíveis.
+### Locações
 
-Fluxo: `router -> FilmeService -> FilmeRepository -> Session SQLAlchemy -> PostgreSQL`. As rotas de filmes confirmam a transação antes de responder; qualquer exceção provoca rollback no encerramento da sessão.
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/locacoes` | Lista locações; filtro `situacao=todas|ativas|atrasadas` |
+| GET | `/locacoes/{locacao_id}` | Consulta uma locação |
+| POST | `/locacoes` | Registra uma locação |
+| PUT | `/locacoes/{locacao_id}` | Edita uma locação em aberto |
+| POST | `/locacoes/{locacao_id}/devolucao` | Registra devolução |
+| DELETE | `/locacoes/{locacao_id}` | Exclui uma locação devolvida |
 
-## Migrações
+As rotas utilizam, conforme o caso, respostas HTTP **200, 201 e 204**; erros como **404** (não encontrado), **409** (conflito), **422** (entrada inválida) e **503** (indisponibilidade do banco).
 
-O contêiner executa `alembic upgrade head` antes do Uvicorn. A revisão `20261120_01` cria `filmes`, checks e índices sem remover tabelas existentes.
+## Banco de dados e integridade
+
+- A migração `20261120_01` cria a tabela `filmes`.
+- A migração `20261120_02` cria a tabela `locacoes`, com chave estrangeira `filme_id` referenciando `filmes.id`.
+- `ON DELETE RESTRICT` protege a referência entre locação e filme.
+- Restrições de datas e índice único parcial impedem inconsistências, como duas locações abertas para um mesmo filme.
+- Registro, edição e devolução de locações atualizam o estado do filme na **mesma transação**; em caso de erro, ocorre rollback.
+- Operações concorrentes utilizam bloqueio de registros (`SELECT ... FOR UPDATE`) nas regras de locação.
+
+Para conferir a versão das migrações e o acesso ao banco:
 
 ```powershell
 docker compose exec api alembic current
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
 ```
 
+O banco principal usa um volume persistente chamado `postgres_data`. O serviço `db` não publica a porta `5432` para a máquina hospedeira: a API o acessa pelo hostname `db` na rede interna do Compose.
+
 ## Testes
+
+Os testes automatizados do backend e do desktop são mantidos em diretórios separados. A suíte padrão não precisa de uma instância real de PostgreSQL; os testes E2E exigem o ambiente de testes isolado.
+
+### Backend — testes unitários
 
 ```powershell
 python -m pip install -r backend/requirements-dev.txt
 python -m unittest discover -s backend/tests/unit -v
 ```
 
-Integração PostgreSQL isolada:
-
-```powershell
-docker compose --profile test up -d --build db_test api_test
-$env:RUN_POSTGRES_INTEGRATION = "1"
-$env:API_BASE_URL = "http://127.0.0.1:8001"
-$env:FILMES_TEST_API_BASE_URL = "http://127.0.0.1:8001"
-python -m unittest discover -s backend/tests/integration -v
-Remove-Item Env:RUN_POSTGRES_INTEGRATION
-Remove-Item Env:API_BASE_URL
-Remove-Item Env:FILMES_TEST_API_BASE_URL
-```
-
-O perfil `test` usa `locadora_test` em armazenamento efêmero. Os testes não acessam JSON, CSV ou dados reais da locadora.
-
-## Persistência e rede
-
-O banco principal usa o volume `postgres_data`. `db` não publica a porta 5432 no host. A API acessa o PostgreSQL pelo hostname `db` na rede interna. Somente a API publica porta, vinculada por padrão a `127.0.0.1:8000`.
-
-```powershell
-docker compose logs --tail 100 api db
-docker compose down
-```
-
-Não use `docker compose down -v` se desejar preservar o banco.
-
-## Integração com locações
-
-`backend.app.models.Base` é a Base SQLAlchemy compartilhada. O model de locações deve referenciar `filmes.id` com `ON DELETE RESTRICT`. `FilmeService.definir_disponibilidade()` permite que locação e devolução atualizem o filme na mesma sessão e transação. Para isso, o módulo de locações deve instanciar o serviço com o padrão `auto_commit=False`; somente as rotas próprias de filmes usam `auto_commit=True`.
-
-A branch de locações ainda não está integrada nesta árvore. Nenhum schema ou arquivo de Nilson foi alterado.
-
-## Servidor remoto
-
-Em Linux, instale Docker, configure `.env`, mantenha 5432 bloqueada e publique a API por proxy reverso HTTPS. IP, domínio, firewall, certificado e persistência após reinicialização real ainda precisam ser validados no servidor escolhido; Docker local não comprova implantação remota.
-
-## Etapa 3
-
-O desktop cria `ApiClient` e `FilmeApiService` na `MainWindow`. O carregamento, cadastro, edição e exclusão são executados por QThreads; pesquisa por título, gênero e ano e filtro de disponibilidade usam o cache confirmado pela API.
-
-```powershell
-python -m pip install -r locadora_filmes/requirements.txt
-$env:LOCADORA_API_BASE_URL = "http://127.0.0.1:8000"
-python locadora_filmes/main.py
-Remove-Item Env:LOCADORA_API_BASE_URL
-```
-
-Se a variável não for definida, o endereço padrão é `http://127.0.0.1:8000`. Detalhes de classes, workers, erros e limitações estão em `docs/trabalho3/integracao_desktop_filmes.md`.
-
-Enquanto a API de locações não estiver integrada nesta branch, a tela correspondente permanece visível, mas suas operações ficam desabilitadas no modo HTTP. Assim, o CSV legado não altera silenciosamente a disponibilidade mantida pelo PostgreSQL.
-
-Testes do desktop:
+### Desktop — testes unitários e de interface
 
 ```powershell
 Push-Location locadora_filmes
 python -m unittest discover -s tests -p "test_*.py" -v
+Pop-Location
+```
+
+### Integração real com PostgreSQL e API de testes
+
+```powershell
+docker compose --profile test up -d --build db_test api_test
+Invoke-RestMethod http://127.0.0.1:8001/health/db
+
+$env:RUN_POSTGRES_INTEGRATION = "1"
+$env:API_BASE_URL = "http://127.0.0.1:8001"
+$env:FILMES_TEST_API_BASE_URL = "http://127.0.0.1:8001"
+python -m unittest discover -s backend/tests/integration -v
 
 $env:RUN_DESKTOP_API_INTEGRATION = "1"
 $env:LOCADORA_TEST_API_BASE_URL = "http://127.0.0.1:8001"
+Push-Location locadora_filmes
 python -m unittest discover -s tests/integration -p "test_*.py" -v
-Remove-Item Env:RUN_DESKTOP_API_INTEGRATION
-Remove-Item Env:LOCADORA_TEST_API_BASE_URL
 Pop-Location
+
+Remove-Item Env:RUN_POSTGRES_INTEGRATION -ErrorAction SilentlyContinue
+Remove-Item Env:RUN_DESKTOP_API_INTEGRATION -ErrorAction SilentlyContinue
+Remove-Item Env:API_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:FILMES_TEST_API_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:LOCADORA_TEST_API_BASE_URL -ErrorAction SilentlyContinue
 ```
+
+O perfil `test` executa `db_test` com banco `locadora_test` efêmero e `api_test` na porta `8001`. **Não utilize o banco principal para testes destrutivos.**
+
+Na execução local previamente registrada durante a integração, a suíte padrão apresentou **119 testes de backend aprovados** e **127 casos de desktop (121 aprovados e 6 ignorados por dependerem do ambiente E2E)**. Esses números descrevem aquela execução, não uma garantia automática para commits futuros.
+
+## Desenvolvimento em dupla
+
+- **Gabriel Santana Paz Landim Negreiros:** infraestrutura Docker/PostgreSQL, backend e integração de filmes, além de contribuições na janela principal e integração geral.
+- **Nilson Bruno dos Santos Lima:** modelagem, API e integração de locações, além de dashboard, telas de locação e funcionalidades relacionadas.
+- **Integração final:** união dos módulos de filmes e locações no fluxo HTTP, sincronização do dashboard e testes.
+
+## Implantação remota
+
+O `docker-compose.yml` permite executar PostgreSQL e API em contêineres. **A validação da execução local em Docker não comprova que o banco já foi implantado em um servidor remoto**, exigência específica do Trabalho 3.
+
+Para uma implantação remota, é necessário configurar um host apropriado, persistência e acesso seguro à API, idealmente com proxy reverso HTTPS. A porta do PostgreSQL não deve ser exposta publicamente; valide também firewall, domínio/certificado e reinicialização dos serviços antes de declarar a implantação concluída.
+
+## Resolução de problemas
+
+- **`POSTGRES_DB is missing a value`:** crie `.env` a partir de `.env.example` e preencha as variáveis obrigatórias.
+- **API indisponível:** confira `docker compose ps` e `docker compose logs --tail 100 api db`.
+- **Desktop não carrega os dados:** verifique `/health/db` e a variável `LOCADORA_API_BASE_URL`.
+- **Banco não aparece no navegador:** PostgreSQL é um servidor de banco, não uma interface web; utilize um cliente como Adminer ou pgAdmin conectado de forma segura.
+- **Mudou a senha no `.env` após inicializar o volume:** a senha armazenada no PostgreSQL não muda automaticamente; altere também a credencial no próprio banco, sem excluir o volume.
