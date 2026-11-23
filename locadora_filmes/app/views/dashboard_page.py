@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.models.locacao_api import titulo_do_filme
+
 
 class DashboardPage(QWidget):
 
@@ -222,12 +224,17 @@ class DashboardPage(QWidget):
         disponiveis = self.filme_service.listar_disponiveis()
         self.label_disponiveis.setText(str(len(disponiveis)))
 
-        if not self.locacoes_integradas:
+        nao_carregado = getattr(self.locacao_service, 'carregado', True) is False
+        if not self.locacoes_integradas or nao_carregado:
+            # Sem dados confiaveis: nao mostra zero, para nao confundir
+            # "nenhuma locacao" com "API indisponivel ou ainda carregando".
             self.label_ativas.setText('-')
             self.label_atrasadas.setText('-')
             self.tabela_recentes.setVisible(False)
             self.label_sem_movimentacoes.setText(
                 self.mensagem_locacoes_pendentes
+                if not self.locacoes_integradas
+                else 'Aguardando o carregamento das locações da API.'
             )
             self.label_sem_movimentacoes.setVisible(True)
             return
@@ -245,19 +252,28 @@ class DashboardPage(QWidget):
         self.mensagem_locacoes_pendentes = mensagem
         self.atualizar_resumo()
 
+    def definir_locacoes_integradas(self):
+        """Volta a exibir os indicadores depois de um carregamento valido."""
+        self.locacoes_integradas = True
+        self.mensagem_locacoes_pendentes = ''
+        self.atualizar_resumo()
+
     def _atualizar_recentes(self):
         locacoes = self.locacao_service.listar_todas()[-5:]
         locacoes.reverse()
 
         possui_locacoes = bool(locacoes)
         self.tabela_recentes.setVisible(possui_locacoes)
+        self.label_sem_movimentacoes.setText(
+            'Nenhuma locação registrada até o momento.'
+        )
         self.label_sem_movimentacoes.setVisible(not possui_locacoes)
         self.tabela_recentes.setRowCount(len(locacoes))
 
         for linha, locacao in enumerate(locacoes):
             status = 'Atrasada' if locacao.atrasada else locacao.status
             itens = [
-                QTableWidgetItem(locacao.filme.titulo),
+                QTableWidgetItem(titulo_do_filme(locacao)),
                 QTableWidgetItem(locacao.cliente_nome),
                 QTableWidgetItem(str(locacao.data_devolucao_prevista)),
                 QTableWidgetItem(status),

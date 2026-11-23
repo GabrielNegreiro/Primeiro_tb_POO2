@@ -1,0 +1,84 @@
+CHANGELOG - ENTREGA FINAL - TRABALHO 3 DE POO II
+Projeto: Locadora de Filmes
+Responsavel: Nilson Bruno (modulo de locacoes)
+Branch: feature/nilson-desktop-locacoes
+Data: 22/11/2026
+
+ARQUIVOS CRIADOS (todos em locadora_filmes/, exceto os dois ultimos)
+- app/models/locacao_api.py
+- app/services/locacao_api_service.py
+- app/workers/locacao_loader_thread.py
+- app/workers/locacao_operation_thread.py
+- tests/test_locacao_api_service.py
+- tests/test_locacoes_page_http.py
+- tests/integration/test_locacoes_api_e2e.py
+- docs/trabalho3/integracao_desktop_locacoes.md
+- entregas/changelog_nilson_entrega_final.txt
+
+ARQUIVOS MODIFICADOS (em locadora_filmes/)
+- app/network/api_client.py (ApiHttpError guarda o detail sem expor na mensagem)
+- app/services/relatorio_service.py (usa titulo_do_filme; formato do TXT preservado)
+- app/views/dashboard_page.py
+- app/views/locacao_dialog.py
+- app/views/locacoes_page.py
+- app/views/main_window.py
+- Nenhum arquivo de backend/ foi alterado. Os arquivos da integracao de filmes
+  do Gabriel alterados foram api_client.py e main_window.py.
+
+REALIZADO
+- LocacaoApiService: consultas (todas, ativas, atrasadas, por id), cadastro,
+  edicao, devolucao e exclusao pela API, com cache em memoria que so recebe
+  dados confirmados e traducao dos erros 404, 409 e 422.
+- Workers em QThread para carregar locacoes e para executar cada operacao.
+  Nenhuma chamada HTTP roda na thread grafica.
+- Se a operacao e concluida mas a atualizacao do acervo de filmes falha, a
+  escrita nunca e repetida; a tela avisa o usuario.
+- LocacoesPage com selecao pelo ID da locacao, bloqueio de operacao duplicada,
+  recusa de exclusao de locacao em aberto e exportacao bloqueada enquanto as
+  locacoes nao foram carregadas.
+- LocacaoDialog no modo HTTP apenas coleta os dados; o filme da edicao e
+  selecionado pelo ID.
+- Dashboard com indicadores vindos da API; mostra "-" enquanto nao carregou ou
+  quando o carregamento falha, em vez de zeros.
+- Exportacao TXT usando os registros da API.
+- MainWindow carrega as locacoes depois dos filmes e o closeEvent aguarda os
+  loaders e as operacoes antes de fechar o cliente HTTP.
+- Preservados: LocacaoService, LocacaoRepository, arquivos CSV/JSON e os
+  testes antigos.
+
+VALIDADO (saidas executadas, 22/11/2026)
+- Testes do desktop (python -m unittest discover -s tests -p "test_*.py",
+  dentro de locadora_filmes): Ran 127 tests, OK (skipped=6). Os 6 pulados sao
+  os e2e, que exigem variavel de ambiente.
+- Testes unitarios do backend: Ran 119 tests, OK.
+- Integracao do backend com PostgreSQL (perfil test do Docker Compose, porta
+  8001): filmes 1 teste OK; locacoes 4 testes OK.
+- E2E do desktop contra a API de teste (RUN_DESKTOP_API_INTEGRATION=1): Ran 6
+  tests, OK. Cobrem o ciclo de locacao pela interface (cadastro, filme
+  indisponivel, segunda locacao rejeitada, devolucao, nova locacao,
+  persistencia lida por cliente novo, exportacao TXT e dashboard), edicao,
+  devolucao e exclusao pelo servico, e o fechamento da janela com os loaders
+  ativos.
+- Validacao visual manual feita pelo autor, com a API de teste na porta 8001:
+  cadastro de filme, locacao, barreiras (filme alugado fora do combo e
+  exclusao de locacao aberta recusada), persistencia apos reiniciar o app,
+  edicao, devolucao, exportacao TXT pela caixa de salvar e exclusao. Todos
+  ocorreram como esperado.
+
+DECISOES DE PROJETO
+- O modo HTTP de locacoes liga quando a MainWindow recebe api_client ou
+  locacao_service, ou e criada sem argumentos (main.py). Com apenas um
+  filme_service injetado, continua no modo pendente, o que preserva
+  test_main_window.py e test_close_event.py.
+- A selecao e as operacoes usam o ID da locacao, e nao a posicao da linha.
+- Na edicao, o prazo conta a partir da data original da locacao.
+- O nome deste arquivo e entrega_final porque nao ha parcial 3.
+
+PENDENTE
+- O botao Atualizar desenhado dentro do dashboard so redesenha pelo cache; o
+  da barra de ferramentas recarrega filmes e locacoes pela API.
+- Comportamento visual com a API parada nao foi validado manualmente.
+- Persistencia apos reiniciar o banco nao validada (o banco de teste usa
+  tmpfs, e o banco principal e do Gabriel).
+- Atualizar docs/trabalho3/modelagem_locacoes.md com a implementacao da Etapa 2.
+- Detalhes e limitacoes: docs/trabalho3/integracao_desktop_locacoes.md.

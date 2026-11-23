@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
 
 from app.network.api_client import ApiClient
 from app.services.filme_api_service import FilmeApiService
+from app.services.locacao_api_service import LocacaoApiService
 from app.services.locacao_service import LocacaoService
 from app.views.dashboard_page import DashboardPage
 from app.views.filmes_page import FilmesPage
 from app.views.locacoes_page import LocacoesPage
 from app.views.sobre_dialog import SobreDialog
 from app.workers.filme_loader_thread import FilmeLoaderThread
+from app.workers.locacao_loader_thread import LocacaoLoaderThread
 
 
 class MainWindow(QMainWindow):
@@ -27,7 +29,7 @@ class MainWindow(QMainWindow):
         'a disponibilidade dos filmes. Nenhum dado CSV foi removido.'
     )
 
-    def __init__(self, api_client=None, filme_service=None):
+    def __init__(self, api_client=None, filme_service=None, locacao_service=None):
         super().__init__()
         self.setWindowTitle('Locadora de Filmes')
         self.resize(900, 600)
@@ -38,19 +40,29 @@ class MainWindow(QMainWindow):
             filme_service = FilmeApiService(self.api_client)
         self.filme_service = filme_service
         self.filme_loader_thread = None
+        self.locacao_loader_thread = None
 
-        # O legado de locacoes permanece isolado e sem repository no modo HTTP.
-        self.locacao_service = LocacaoService()
+        # Modo HTTP: locacoes vem da API. Sem cliente HTTP nem servico
+        # injetado, o legado fica isolado e as acoes continuam bloqueadas.
+        if locacao_service is None and self.api_client is not None:
+            locacao_service = LocacaoApiService(
+                self.api_client, self.filme_service
+            )
+        self.modo_http_locacoes = locacao_service is not None
+        self.locacao_service = (
+            locacao_service if self.modo_http_locacoes else LocacaoService()
+        )
 
         self.dashboard_page = DashboardPage(self.locacao_service, self.filme_service)
         self.filmes_page = FilmesPage(self.filme_service)
         self.locacoes_page = LocacoesPage(self.locacao_service, self.filme_service)
-        self.dashboard_page.definir_locacoes_indisponiveis(
-            self.MENSAGEM_LOCACOES_PENDENTES
-        )
-        self.locacoes_page.ativar_modo_integracao_pendente(
-            self.MENSAGEM_LOCACOES_PENDENTES
-        )
+        if not self.modo_http_locacoes:
+            self.dashboard_page.definir_locacoes_indisponiveis(
+                self.MENSAGEM_LOCACOES_PENDENTES
+            )
+            self.locacoes_page.ativar_modo_integracao_pendente(
+                self.MENSAGEM_LOCACOES_PENDENTES
+            )
 
         self.stack = QStackedWidget()
         self.stack.addWidget(self.dashboard_page)
@@ -83,10 +95,11 @@ class MainWindow(QMainWindow):
         self.acao_locacoes = QAction('Locacoes', self)
         self.acao_novo_filme = QAction('Novo Filme', self)
         self.acao_nova_locacao = QAction('Nova Locacao', self)
-        self.acao_nova_locacao.setEnabled(False)
-        self.acao_nova_locacao.setToolTip(
-            self.MENSAGEM_LOCACOES_PENDENTES
-        )
+        if not self.modo_http_locacoes:
+            self.acao_nova_locacao.setEnabled(False)
+            self.acao_nova_locacao.setToolTip(
+                self.MENSAGEM_LOCACOES_PENDENTES
+            )
         self.acao_atualizar = QAction('Atualizar', self)
         self.acao_sobre = QAction('Sobre', self)
         self.acao_sair = QAction('Sair', self)
@@ -138,12 +151,23 @@ class MainWindow(QMainWindow):
         self.filmes_page.filme_excluido.connect(
             self._atualizar_dados_locais
         )
-        self.locacoes_page.locacoes_alteradas.connect(self.atualizar_tudo)
+        if self.modo_http_locacoes:
+            # O worker ja recarregou o acervo; basta redesenhar as telas.
+            self.locacoes_page.locacoes_alteradas.connect(
+                self._on_locacoes_alteradas
+            )
+        else:
+            self.locacoes_page.locacoes_alteradas.connect(self.atualizar_tudo)
 
     def _iniciar_carregamento_filmes(self):
         if self.filmes_page.operacao_em_andamento():
             self.statusBar().showMessage(
                 'Aguarde a operacao de filmes terminar.'
+            )
+            return False
+        if self.locacoes_page.operacao_em_andamento():
+            self.statusBar().showMessage(
+                'Aguarde a operacao de locacoes terminar.'
             )
             return False
         if (
@@ -176,6 +200,30 @@ class MainWindow(QMainWindow):
             lambda: self._finalizar_carregamento_filmes(thread_atual)
         )
         self.filme_loader_thread.start()
+        self._iniciar_carregamento_locacoes()
+        return True
+
+    def _iniciar_carregamento_locacoes(self):
+        """Carrega as locacoes da API em um worker (somente modo HTTP)."""
+        if not self.modo_http_locacoes:
+            return False
+        if self.locacoes_page.operacao_em_andamento():
+            return False
+        if (
+            self.locacao_loader_thread is not None
+            and self.locacao_loader_thread.isRunning()
+        ):
+            return False
+
+        self.locacoes_page.set_carregando(True)
+        thread = LocacaoLoaderThread(self.locacao_service, self)
+        self.locacao_loader_thread = thread
+        thread.carregado.connect(self._on_locacoes_carregadas)
+        thread.erro.connect(self._on_erro_carregamento_locacoes)
+        thread.finished.connect(
+            lambda: self._finalizar_carregamento_locacoes(thread)
+        )
+        thread.start()
         return True
 
     def _on_filmes_carregados(self, filmes):
@@ -193,6 +241,23 @@ class MainWindow(QMainWindow):
             f'Nao foi possivel carregar o acervo de filmes.\n\n{mensagem}',
         )
 
+    def _on_locacoes_carregadas(self, locacoes):
+        self.locacao_service.aplicar_locacoes_carregadas(locacoes)
+        self.dashboard_page.definir_locacoes_integradas()
+        self.locacoes_page.atualizar_tabela()
+        self.statusBar().showMessage('Locacoes carregadas.', 3000)
+
+    def _on_erro_carregamento_locacoes(self, mensagem):
+        self.statusBar().showMessage('Falha ao carregar as locacoes.')
+        self.dashboard_page.definir_locacoes_indisponiveis(
+            'Nao foi possivel carregar as locações da API.'
+        )
+        QMessageBox.warning(
+            self,
+            'Erro ao carregar locacoes',
+            f'Nao foi possivel carregar as locacoes.\n\n{mensagem}',
+        )
+
     def _finalizar_carregamento_filmes(self, thread):
         """Restaura a tela e libera a referencia da thread concluida."""
         if self.filme_loader_thread is thread:
@@ -200,10 +265,22 @@ class MainWindow(QMainWindow):
             self.filmes_page.set_carregando(False)
         thread.deleteLater()
 
+    def _finalizar_carregamento_locacoes(self, thread):
+        """Reabilita a tela de locacoes e libera o worker concluido."""
+        if self.locacao_loader_thread is thread:
+            self.locacao_loader_thread = None
+            self.locacoes_page.set_carregando(False)
+        thread.deleteLater()
+
     def _atualizar_dados_locais(self):
         """Atualiza consumidores do cache sem realizar HTTP na GUI."""
         self.locacoes_page.atualizar_tabela()
         self.dashboard_page.atualizar_resumo()
+
+    def _on_locacoes_alteradas(self):
+        """Redesenha filmes, locacoes e dashboard a partir dos caches."""
+        self.filmes_page.carregar_filmes()
+        self._atualizar_dados_locais()
 
     def ir_inicio(self):
         self.navegacao.setCurrentRow(0)
@@ -251,6 +328,21 @@ class MainWindow(QMainWindow):
                     )
                     event.ignore()
                     return
+            if (
+                self.locacao_loader_thread is not None
+                and self.locacao_loader_thread.isRunning()
+            ):
+                self.statusBar().showMessage(
+                    'Aguardando o carregamento das locacoes...'
+                )
+                if not self.locacao_loader_thread.wait(3000):
+                    QMessageBox.information(
+                        self,
+                        'Carregamento em andamento',
+                        'Aguarde o carregamento das locacoes terminar para sair.',
+                    )
+                    event.ignore()
+                    return
             if self.filmes_page.operacao_em_andamento():
                 self.statusBar().showMessage(
                     'Aguardando a operacao de filmes terminar...'
@@ -260,6 +352,18 @@ class MainWindow(QMainWindow):
                         self,
                         'Operacao em andamento',
                         'Aguarde a operacao de filmes terminar para sair.',
+                    )
+                    event.ignore()
+                    return
+            if self.locacoes_page.operacao_em_andamento():
+                self.statusBar().showMessage(
+                    'Aguardando a operacao de locacoes terminar...'
+                )
+                if not self.locacoes_page.aguardar_operacao(3000):
+                    QMessageBox.information(
+                        self,
+                        'Operacao em andamento',
+                        'Aguarde a operacao de locacoes terminar para sair.',
                     )
                     event.ignore()
                     return

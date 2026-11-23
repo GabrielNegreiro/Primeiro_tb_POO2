@@ -38,14 +38,17 @@ class ApiHttpError(ApiClientError):
         503: 'O servico esta temporariamente indisponivel.',
     }
 
-    def __init__(self, status_code: int):
-        """Inicializa o erro com o status e uma mensagem publica segura."""
+    def __init__(self, status_code: int, detail=None, mensagem=None):
+        """Inicializa com status, detalhe interno opcional e mensagem publica."""
         self.status_code = status_code
-        mensagem = self.MENSAGENS.get(
+        # O detalhe nunca entra na mensagem; so os modulos que conhecem os
+        # textos seguros do proprio backend podem decidir usa-lo.
+        self.detail = detail if isinstance(detail, str) else None
+        texto = mensagem or self.MENSAGENS.get(
             status_code,
             f'A API recusou a operacao (HTTP {status_code}).',
         )
-        super().__init__(mensagem)
+        super().__init__(texto)
 
 
 class ApiClient:
@@ -114,7 +117,7 @@ class ApiClient:
             ) from error
 
         if response.status_code < 200 or response.status_code >= 300:
-            raise ApiHttpError(response.status_code)
+            raise ApiHttpError(response.status_code, self._detalhe(response))
         if response.status_code == 204:
             return None
 
@@ -124,3 +127,14 @@ class ApiClient:
             raise ApiInvalidResponseError(
                 'A API retornou uma resposta JSON invalida.'
             ) from error
+
+    @staticmethod
+    def _detalhe(response) -> Optional[Any]:
+        """Extrai o campo detail de um erro JSON, sem falhar se nao existir."""
+        try:
+            corpo = response.json()
+        except ValueError:
+            return None
+        if isinstance(corpo, dict):
+            return corpo.get('detail')
+        return None
