@@ -21,6 +21,9 @@ class LocacaoDialog(QDialog):
         self.filmes_disponiveis = filmes_disponiveis
         self.locacao_service = locacao_service
         self.locacao_criada = None
+        # No modo HTTP o dialogo apenas coleta os dados; a chamada de rede e
+        # feita por um worker na tela de locacoes.
+        self.assincrono = getattr(locacao_service, 'assincrono', False) is True
 
         self.combo_filme = QComboBox()
         for filme in self.filmes_disponiveis:
@@ -33,9 +36,7 @@ class LocacaoDialog(QDialog):
 
         if self.locacao is not None:
             self.campo_cliente.setText(self.locacao.cliente_nome)
-            indice = self.combo_filme.findData(self.locacao.filme)
-            if indice >= 0:
-                self.combo_filme.setCurrentIndex(indice)
+            self._selecionar_filme_da_locacao()
             if self.locacao.data_devolucao_prevista is not None:
                 dias = (
                     self.locacao.data_devolucao_prevista - self.locacao.data_locacao
@@ -63,6 +64,24 @@ class LocacaoDialog(QDialog):
         layout_principal.addLayout(layout_botoes)
         self.setLayout(layout_principal)
 
+    def _selecionar_filme_da_locacao(self):
+        """Seleciona o filme da locacao pelo identificador, nao pelo objeto."""
+        filme_id = getattr(self.locacao, 'filme_id', None)
+        if filme_id is None and self.locacao.filme is not None:
+            filme_id = self.locacao.filme.id
+        for indice in range(self.combo_filme.count()):
+            if self.combo_filme.itemData(indice).id == filme_id:
+                self.combo_filme.setCurrentIndex(indice)
+                return
+
+    def dados(self):
+        """Retorna os valores preenchidos no formulario."""
+        return {
+            'filme': self.combo_filme.currentData(),
+            'cliente_nome': self.campo_cliente.text().strip(),
+            'dias': self.campo_dias.value(),
+        }
+
     def salvar(self):
         if self.combo_filme.count() == 0:
             QMessageBox.warning(
@@ -75,6 +94,10 @@ class LocacaoDialog(QDialog):
             QMessageBox.warning(
                 self, 'Campo obrigatorio', 'Informe o nome do cliente.'
             )
+            return
+
+        if self.assincrono:
+            self.accept()
             return
 
         filme = self.combo_filme.currentData()
